@@ -80,6 +80,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { AuthRequest, createToken } from '../middlewares/auth'
 import User from '../models/User';
 import { logger } from '../utils/logger';
 
@@ -97,10 +98,13 @@ class UserController {
   }
 
   // Register a new user
-  public async register(req: Request, res: Response): Promise<void> {
+  public async register(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { username, email, password } = req.body;
-
+      const { username, email, password, fullname, contactNo, city, role } = req.body;
+      if (!username || !email || !password || !fullname || !contactNo || !city ) {
+        res.status(400).json({ message: 'All fields are required' });
+        return;
+      }
       // Check if user already exists
       const existingUser = await User.findOne({ email });
       if (existingUser) {
@@ -113,16 +117,33 @@ class UserController {
       const hashedPassword = await bcrypt.hash(password, salt);
 
       const user = new User({
+        fullname,
         username,
         email,
         password: hashedPassword,
+        contactNo,
+        city,
+        role
       });
 
       await user.save();
 
       // Create JWT token
-      const token = UserController.createToken(user.id);
-      res.status(201).json({ token });
+      const token = createToken(user.id,user.role);
+      res.status(201).json({ 
+        message: "Registration successful. Welcome to our platform!",
+        token, 
+        user: {
+          id: user.id,
+          fullname: user.fullname,
+          username: user.username,
+          email: user.email,
+          contactNo: user.contactNo,
+          city: user.city,
+          role: user.role
+        },
+        
+      });
     } catch (error) {
       logger.error('Error in register:', error);
       res.status(500).json({ message: 'Server error' });
@@ -130,7 +151,7 @@ class UserController {
   }
 
   // Login an existing user
-  public async login(req: Request, res: Response): Promise<void> {
+  public async login(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { email, password } = req.body;
 
@@ -153,7 +174,7 @@ class UserController {
       }
 
       // Generate JWT and set it as a cookie
-      const token = UserController.createToken(user.id);
+      const token = createToken(user.id,user.role);
       res.cookie('token', token, { httpOnly: true, secure: true });
       res.json({ message: 'Login successful', token });
     } catch (error) {
@@ -163,7 +184,7 @@ class UserController {
   }
 
   // Logout the user
-  public logout(req: Request, res: Response): void {
+  public logout(req: AuthRequest, res: Response): void {
     try {
       res.clearCookie('token');
       res.json({ message: 'Logout successful' });
@@ -174,7 +195,7 @@ class UserController {
   }
 
   // Get user by id details 
-  public async getUser(req: Request, res: Response): Promise<void> {
+  public async getUserById(req: AuthRequest, res: Response): Promise<void> {
     try {
       const user = await User.findById(req.params.id).select('-password');
       if (!user) {
@@ -189,9 +210,9 @@ class UserController {
   }
 
   // Update user details
-  public async updateUser(req: Request, res: Response): Promise<void> {
+  public async updateUser(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { username, email } = req.body;
+      const { username, email, fullname, contactNo, city, role } = req.body;
       const user = await User.findById(req.params.id);
 
       if (!user) {
@@ -200,11 +221,28 @@ class UserController {
       }
 
       // Update user details
+      user.fullname = fullname || user.fullname;
       user.username = username || user.username;
       user.email = email || user.email;
+      user.contactNo= contactNo || user.contactNo;
+      user.city = city || user.city;
+      user.role = role || user.role;
 
       await user.save();
-      res.json({ message: 'User updated successfully', user });
+
+      res.status(201).json({ 
+        message: "User details updated successfully", 
+        user: {
+          id: user.id,
+          fullname: user.fullname,
+          username: user.username,
+          email: user.email,
+          contactNo: user.contactNo,
+          city: user.city,
+          role: user.role
+        }
+        
+      });
     } catch (error) {
       logger.error('Error in updateUser:', error);
       res.status(500).json({ message: 'Server error' });
@@ -212,7 +250,7 @@ class UserController {
   }
 
   // Delete user
-  public async deleteUser(req: Request, res: Response): Promise<void> {
+  public async deleteUser(req: AuthRequest, res: Response): Promise<void> {
     try {
       const user = await User.findById(req.params.id);
       if (!user) {
@@ -228,14 +266,6 @@ class UserController {
     }
   }
 
-  // Helper function to create a JWT token
-  private static  createToken(userId: string): string {
-    const payload = { user: { id: userId } };
-    const expiresIn = process.env.JWT_EXPIRES_IN || '1h';
-    const secretKey = process.env.JWT_SECRET_KEY as string;
-
-    return jwt.sign(payload, secretKey, { expiresIn });
-  }
 }
 
 export default UserController.getInstance();

@@ -4,6 +4,7 @@ import connectDB from './config/db';
 import authRoutes from './routes/authRoutes';
 import dataRoutes from './routes/dataRoutes';
 import { errorHandler } from './middlewares/errorHandler';
+import cors from 'cors'; 
 
 dotenv.config();
 
@@ -15,6 +16,16 @@ connectDB();
 
 // Middleware
 app.use(express.json());
+
+// Cores
+app.use(
+    cors({
+      exposedHeaders: ['X-Total-Count'],
+      origin: ['http://localhost:3000', 'http://localhost:5173'],
+      methods: ['GET', 'POST', 'PUT', 'DELETE'],
+      credentials: true
+    })
+  );
 
 // Routes
 app.use('/api/auth', authRoutes);
